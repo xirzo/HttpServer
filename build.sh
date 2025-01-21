@@ -20,3 +20,5 @@ mkdir -p out/Debug
 cd out/Debug
 
 cmake -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_USER_MAKE_RULES_OVERRIDE=$(pwd)/../../ClangOverrides.txt ../../
+
+ln -sf $(pwd)/compile_commands.json ../../compile_commands.json
