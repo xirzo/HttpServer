@@ -3,10 +3,18 @@
 
 #include <netdb.h>
 #include <stdint.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 
-int32_t start_server(const char *port, const int32_t max_pending_con);
-void close_server(void);
+enum RequestType {
+    GET,
+};
+
+struct Server {
+    struct addrinfo *res;
+    int32_t fd;
+};
+
+int32_t start_server(struct Server *server, const char *port,
+                     const int32_t max_pending_con);
+void close_server(struct Server *server);
 
 #endif  // !SERVER_H

@@ -1,19 +1,19 @@
 #include "server.h"
 
-#include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-struct addrinfo *res;
-int32_t server_fd = -1;
-
-int32_t start_server(const char *port, const int32_t max_pending_con) {
+int32_t start_server(struct Server *server, const char *port,
+                     const int32_t max_pending_con) {
     struct addrinfo hints;
 
     memset(&hints, 0, sizeof(hints));
@@ -24,34 +24,80 @@ int32_t start_server(const char *port, const int32_t max_pending_con) {
 
     int addrinfo_result;
 
-    if ((addrinfo_result = getaddrinfo(NULL, port, &hints, &res)) != 0) {
+    if ((addrinfo_result = getaddrinfo(NULL, port, &hints, &server->res)) != 0) {
         printf("Server getaddrinfo error: %s\n", strerror(errno));
         return -1;
     }
 
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    if ((server->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         printf("Server socket error: %s\n", strerror(errno));
         return -1;
     }
 
+    int32_t option = 1;
+    setsockopt(server->fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+
     int32_t bind_result = 0;
 
-    if ((bind_result = bind(server_fd, res->ai_addr, res->ai_addrlen)) == -1) {
+    if ((bind_result = bind(server->fd, server->res->ai_addr, server->res->ai_addrlen)) ==
+        -1) {
         printf("Server bind error: %s\n", strerror(errno));
         return -1;
     }
 
     int32_t listen_result = 0;
 
-    if ((listen_result = listen(server_fd, max_pending_con)) == -1) {
+    if ((listen_result = listen(server->fd, max_pending_con)) == -1) {
         printf("Server listen error: %s\n", strerror(errno));
         return -1;
+    }
+
+    printf("Server listening on port: %s\n", port);
+
+    size_t current_client = -1;
+
+    while (1) {
+        struct sockaddr_storage client_addr;
+        socklen_t client_addrlen = sizeof(client_addr);
+        int client_fd;
+
+        if ((client_fd = accept(server->fd, (struct sockaddr *)&client_addr,
+                                &client_addrlen)) == -1) {
+            printf("Server accept error: %s\n", strerror(errno));
+            return -1;
+        }
+
+        const char *response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "<!DOCTYPE html>\n"
+            "<html>\n"
+            "<head><title>Hello, World!</title></head>\n"
+            "<body>\n"
+            "<h1>Hello, World!</h1>\n"
+            "<p>This is a simple HTML response from the server.</p>\n"
+            "</body>\n"
+            "</html>\n";
+
+        send(client_fd, response, strlen(response), 0);
+
+        printf("Client connected.\n");
+        close(client_fd);
     }
 
     return 0;
 }
 
-void close_server() {
-    close(server_fd);
-    freeaddrinfo(res);
+void close_server(struct Server *server) {
+    if (server->fd != -1) {
+        close(server->fd);
+        server->fd = -1;
+    }
+
+    if (server->res != NULL) {
+        freeaddrinfo(server->res);
+        server->res = NULL;
+    }
 }
