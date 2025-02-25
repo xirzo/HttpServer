@@ -8,8 +8,7 @@ int main(int argc, char *argv[]) {
 
     struct Server *server = malloc(sizeof(struct Server));
 
-    server->fd = 1;
-    server->res = NULL;
+    init_server(server);
 
     start_server(server, PORT, MAX_PENDING_CONS);
 

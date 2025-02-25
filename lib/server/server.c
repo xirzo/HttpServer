@@ -12,6 +12,39 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+void init_server(struct Server *server) {
+    server->res = NULL;
+    server->fd = 1;
+}
+
+// rewrite this
+char *read_file(FILE *f) {
+    if (f == NULL || fseek(f, 0, SEEK_END)) {
+        return NULL;
+    }
+
+    long length = ftell(f);
+
+    rewind(f);
+
+    if (length == -1 || (unsigned long)length >= SIZE_MAX) {
+        return NULL;
+    }
+
+    size_t ulength = (size_t)length;
+
+    char *buffer = malloc(ulength + 1);
+
+    if (buffer == NULL || fread(buffer, 1, ulength, f) != ulength) {
+        free(buffer);
+        return NULL;
+    }
+
+    buffer[ulength] = '\0';
+
+    return buffer;
+}
+
 int32_t start_server(struct Server *server, const char *port,
                      const int32_t max_pending_con) {
     struct addrinfo hints;
@@ -67,19 +100,13 @@ int32_t start_server(struct Server *server, const char *port,
             return -1;
         }
 
-        const char *response =
-            "HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/html\r\n"
-            "Connection: close\r\n"
-            "\r\n"
-            "<!DOCTYPE html>\n"
-            "<html>\n"
-            "<head><title>Hello, World!</title></head>\n"
-            "<body>\n"
-            "<h1>Hello, World!</h1>\n"
-            "<p>This is a simple HTML response from the server.</p>\n"
-            "</body>\n"
-            "</html>\n";
+        // add parsing of the request, to bring appropriate html
+
+        FILE *fptr = fopen("index.html", "r");
+
+        char *response = read_file(fptr);
+
+        fclose(fptr);
 
         send(client_fd, response, strlen(response), 0);
 

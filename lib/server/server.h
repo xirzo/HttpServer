@@ -13,6 +13,8 @@ struct Server {
     int32_t fd;
 };
 
+void init_server(struct Server *server);
+
 int32_t start_server(struct Server *server, const char *port,
                      const int32_t max_pending_con);
 void close_server(struct Server *server);
