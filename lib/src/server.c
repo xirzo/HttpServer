@@ -14,15 +14,19 @@
 
 typedef struct Server
 {
-    struct addrinfo *res;
     int32_t fd;
+    size_t max_pending_connections;
+    const char *port;
+    struct addrinfo *res;
 } Server;
 
-Server *createServer() {
+Server *createServer(const char *port, const size_t max_pending_connections) {
     Server *server = malloc(sizeof(*server));
 
-    server->res = NULL;
     server->fd = 1;
+    server->max_pending_connections = max_pending_connections;
+    server->port = port;
+    server->res = NULL;
 
     return server;
 }
@@ -64,7 +68,7 @@ char *read_file(FILE *f) {
     return buffer;
 }
 
-int32_t startServer(Server *s, const char *port, const size_t max_pending_connections) {
+int32_t startServer(Server *s) {
     struct addrinfo hints;
 
     memset(&hints, 0, sizeof(hints));
@@ -75,7 +79,7 @@ int32_t startServer(Server *s, const char *port, const size_t max_pending_connec
 
     int addrinfo_result;
 
-    if ((addrinfo_result = getaddrinfo(NULL, port, &hints, &s->res)) != 0) {
+    if ((addrinfo_result = getaddrinfo(NULL, s->port, &hints, &s->res)) != 0) {
         printf("Server getaddrinfo error: %s\n", strerror(errno));
         return -1;
     }
@@ -97,12 +101,12 @@ int32_t startServer(Server *s, const char *port, const size_t max_pending_connec
 
     int32_t listen_result = 0;
 
-    if ((listen_result = listen(s->fd, max_pending_connections)) == -1) {
+    if ((listen_result = listen(s->fd, s->max_pending_connections)) == -1) {
         printf("Server listen error: %s\n", strerror(errno));
         return -1;
     }
 
-    printf("Server listening on port: %s\n", port);
+    printf("Server listening on port: %s\n", s->port);
 
     size_t current_client = -1;
 
