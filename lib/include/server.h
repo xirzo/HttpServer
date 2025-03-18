@@ -13,6 +13,8 @@ Server *createServer(const char *port, const size_t max_pending_connections,
 void freeServer(Server *s);
 
 int32_t startServer(Server *s);
+int32_t acceptClientConnection(Server *s);
+uint8_t isServerRunning(Server *s);
 void closeServer(Server *s);
 
 #endif  // !SERVER_H

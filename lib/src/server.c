@@ -15,6 +15,17 @@
 
 #include "routes.h"
 
+typedef struct Server
+{
+    int32_t fd;
+    size_t max_pending_connections;
+    size_t max_request_size;
+    const char *port;
+    struct addrinfo *res;
+    uint8_t running;
+    Routes *r;
+} Server;
+
 typedef struct
 {
     const char *extension;
@@ -103,16 +114,6 @@ const char *getContentType(const char *extension) {
     return content_type_table[i].content_type;
 }
 
-typedef struct Server
-{
-    int32_t fd;
-    size_t max_pending_connections;
-    size_t max_request_size;
-    const char *port;
-    struct addrinfo *res;
-    Routes *r;
-} Server;
-
 Server *createServer(const char *port, const size_t max_pending_connections,
                      const size_t max_request_size, Routes *r) {
     Server *server = malloc(sizeof(*server));
@@ -123,6 +124,7 @@ Server *createServer(const char *port, const size_t max_pending_connections,
     server->port = port;
     server->res = NULL;
     server->r = r;
+    server->running = 0;
 
     return server;
 }
@@ -206,7 +208,11 @@ int32_t startServer(Server *s) {
     }
 
     printf("Server listening on port: %s\n", s->port);
+    s->running = 1;
+    return 0;
+}
 
+int32_t acceptClientConnection(Server *s) {
     size_t current_client = -1;
 
     while (1) {
@@ -264,7 +270,7 @@ int32_t startServer(Server *s) {
         if (!fptr) {
             fprintf(stderr, "error: File does not exist %s\n", filename);
             close(client_fd);
-            continue;
+            return 0;
         }
 
         char *response = read_file(fptr);
@@ -281,13 +287,23 @@ int32_t startServer(Server *s) {
         send(client_fd, response, strlen(response), 0);
 
         printf("Client connected.\n");
+
+        free(response);
+        free(key);
+        free(client_buffer);
+        close(client_fd);
+
         close(client_fd);
     }
+}
 
-    return 0;
+uint8_t isServerRunning(Server *s) {
+    return s->running;
 }
 
 void closeServer(Server *s) {
+    s->running = 0;
+
     if (s->fd != -1) {
         close(s->fd);
         s->fd = -1;

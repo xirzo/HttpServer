@@ -17,8 +17,11 @@ int main(int argc, char *argv[]) {
 
     startServer(s);
 
-    closeServer(s);
+    while (isServerRunning(s)) {
+        acceptClientConnection(s);
+    }
 
+    closeServer(s);
     freeServer(s);
 
     return EXIT_SUCCESS;
