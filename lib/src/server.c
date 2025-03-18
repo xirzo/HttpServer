@@ -80,12 +80,12 @@ int32_t startServer(Server *s) {
     int addrinfo_result;
 
     if ((addrinfo_result = getaddrinfo(NULL, s->port, &hints, &s->res)) != 0) {
-        printf("Server getaddrinfo error: %s\n", strerror(errno));
+        fprintf(stderr, "error: Server getaddrinfo error: %s\n", strerror(errno));
         return -1;
     }
 
     if ((s->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        printf("Server socket error: %s\n", strerror(errno));
+        fprintf(stderr, "error: Server socket error: %s\n", strerror(errno));
         return -1;
     }
 
@@ -95,14 +95,14 @@ int32_t startServer(Server *s) {
     int32_t bind_result = 0;
 
     if ((bind_result = bind(s->fd, s->res->ai_addr, s->res->ai_addrlen)) == -1) {
-        printf("Server bind error: %s\n", strerror(errno));
+        fprintf(stderr, "error: Server bind error: %s\n", strerror(errno));
         return -1;
     }
 
     int32_t listen_result = 0;
 
     if ((listen_result = listen(s->fd, s->max_pending_connections)) == -1) {
-        printf("Server listen error: %s\n", strerror(errno));
+        fprintf(stderr, "Server listen error: %s\n", strerror(errno));
         return -1;
     }
 
@@ -117,7 +117,7 @@ int32_t startServer(Server *s) {
 
         if ((client_fd =
                  accept(s->fd, (struct sockaddr *)&client_addr, &client_addrlen)) == -1) {
-            printf("Server accept error: %s\n", strerror(errno));
+            fprintf(stderr, "Server accept error: %s\n", strerror(errno));
             return -1;
         }
 
