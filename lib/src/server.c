@@ -15,8 +15,6 @@
 
 #include "routes.h"
 
-#define CLIENT_BUFFER_SIZE 1000
-
 typedef struct
 {
     const char *extension;
@@ -109,16 +107,19 @@ typedef struct Server
 {
     int32_t fd;
     size_t max_pending_connections;
+    size_t max_request_size;
     const char *port;
     struct addrinfo *res;
     Routes *r;
 } Server;
 
-Server *createServer(const char *port, const size_t max_pending_connections, Routes *r) {
+Server *createServer(const char *port, const size_t max_pending_connections,
+                     const size_t max_request_size, Routes *r) {
     Server *server = malloc(sizeof(*server));
 
     server->fd = 1;
     server->max_pending_connections = max_pending_connections;
+    server->max_request_size = max_request_size;
     server->port = port;
     server->res = NULL;
     server->r = r;
@@ -219,19 +220,20 @@ int32_t startServer(Server *s) {
             return -1;
         }
 
-        char client_buffer[CLIENT_BUFFER_SIZE] = {0};
+        char *client_buffer = malloc(sizeof(char) * s->max_request_size);
 
-        ssize_t value_read = read(client_fd, client_buffer, CLIENT_BUFFER_SIZE - 1);
+        ssize_t value_read = read(client_fd, client_buffer, s->max_request_size - 1);
 
         if (value_read <= 0) {
             fprintf(stderr, "error: Client disconnected or read error: %s\n",
                     strerror(errno));
+            free(client_buffer);
             return -1;
         }
 
-        if (value_read >= CLIENT_BUFFER_SIZE - 1) {
+        if (value_read >= s->max_request_size - 1) {
             fprintf(stderr, "error: Client data exceeds buffer size. Truncating.\n");
-            client_buffer[CLIENT_BUFFER_SIZE - 1] = '\0';
+            client_buffer[s->max_pending_connections - 1] = '\0';
         }
 
         HttpRequest *r;
@@ -271,6 +273,7 @@ int32_t startServer(Server *s) {
             fprintf(stderr, "error: No response read from file\n");
             close(client_fd);
             fclose(fptr);
+            free(client_buffer);
             return -1;
         }
 

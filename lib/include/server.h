@@ -6,14 +6,10 @@
 
 #include "routes.h"
 
-enum RequestType
-{
-    GET,
-};
-
 typedef struct Server Server;
 
-Server *createServer(const char *port, const size_t max_pending_connections, Routes *r);
+Server *createServer(const char *port, const size_t max_pending_connections,
+                     const size_t max_request_size, Routes *r);
 void freeServer(Server *s);
 
 int32_t startServer(Server *s);
