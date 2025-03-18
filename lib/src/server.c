@@ -1,6 +1,7 @@
 #include "server.h"
 
 #include <errno.h>
+#include <http_parser.h>
 #include <netdb.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -12,21 +13,115 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "routes.h"
+
+#define CLIENT_BUFFER_SIZE 1000
+
+typedef struct
+{
+    const char *extension;
+    const char *content_type;
+} ContentTypeMapping;
+
+ContentTypeMapping content_type_table[] = {
+    {"jar", "application/java-archive"},
+    {"x12", "application/EDI-X12"},
+    {"edi", "application/EDIFACT"},
+    {"js", "application/javascript"},
+    {"bin", "application/octet-stream"},
+    {"ogg", "application/ogg"},
+    {"pdf", "application/pdf"},
+    {"xhtml", "application/xhtml+xml"},
+    {"swf", "application/x-shockwave-flash"},
+    {"json", "application/json"},
+    {"jsonld", "application/ld+json"},
+    {"xml", "application/xml"},
+    {"zip", "application/zip"},
+    {"form", "application/x-www-form-urlencoded"},
+
+    {"mp3", "audio/mpeg"},
+    {"wma", "audio/x-ms-wma"},
+    {"ra", "audio/vnd.rn-realaudio"},
+    {"wav", "audio/x-wav"},
+
+    {"gif", "image/gif"},
+    {"jpeg", "image/jpeg"},
+    {"jpg", "image/jpeg"},
+    {"png", "image/png"},
+    {"tiff", "image/tiff"},
+    {"ico", "image/vnd.microsoft.icon"},
+    {"icon", "image/x-icon"},
+    {"djvu", "image/vnd.djvu"},
+    {"svg", "image/svg+xml"},
+
+    {"mixed", "multipart/mixed"},
+    {"alternative", "multipart/alternative"},
+    {"related", "multipart/related"},
+    {"form-data", "multipart/form-data"},
+
+    {"css", "text/css"},
+    {"csv", "text/csv"},
+    {"event-stream", "text/event-stream"},
+    {"html", "text/html"},
+    {"htm", "text/html"},
+    {"js", "text/javascript"},
+    {"txt", "text/plain"},
+    {"xml", "text/xml"},
+
+    {"mpeg", "video/mpeg"},
+    {"mp4", "video/mp4"},
+    {"mov", "video/quicktime"},
+    {"wmv", "video/x-ms-wmv"},
+    {"avi", "video/x-msvideo"},
+    {"flv", "video/x-flv"},
+    {"webm", "video/webm"},
+
+    {"apk", "application/vnd.android.package-archive"},
+    {"odt", "application/vnd.oasis.opendocument.text"},
+    {"ods", "application/vnd.oasis.opendocument.spreadsheet"},
+    {"odp", "application/vnd.oasis.opendocument.presentation"},
+    {"odg", "application/vnd.oasis.opendocument.graphics"},
+    {"xls", "application/vnd.ms-excel"},
+    {"xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    {"ppt", "application/vnd.ms-powerpoint"},
+    {"pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+    {"doc", "application/msword"},
+    {"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    {"xul", "application/vnd.mozilla.xul+xml"},
+
+    {NULL, "text/plain"}};
+
+const char *getContentType(const char *extension) {
+    size_t i = 0;
+
+    while (content_type_table[i].extension != NULL) {
+        if (strcmp(extension, content_type_table[i].extension) == 0) {
+            return content_type_table[i].content_type;
+        }
+
+        i++;
+    }
+
+    return content_type_table[i].content_type;
+}
+
 typedef struct Server
 {
     int32_t fd;
     size_t max_pending_connections;
     const char *port;
     struct addrinfo *res;
+    Routes *r;
 } Server;
 
-Server *createServer(const char *port, const size_t max_pending_connections) {
+Server *createServer(const char *port, const size_t max_pending_connections, Routes *r) {
     Server *server = malloc(sizeof(*server));
 
     server->fd = 1;
     server->max_pending_connections = max_pending_connections;
     server->port = port;
     server->res = NULL;
+    server->r = r;
 
     return server;
 }
@@ -37,10 +132,13 @@ void freeServer(Server *s) {
         return;
     }
 
+    if (s->r) {
+        freeRoutes(s->r);
+    }
+
     free(s->res);
 }
 
-// rewrite this
 char *read_file(FILE *f) {
     if (f == NULL || fseek(f, 0, SEEK_END)) {
         return NULL;
@@ -117,20 +215,54 @@ int32_t startServer(Server *s) {
 
         if ((client_fd =
                  accept(s->fd, (struct sockaddr *)&client_addr, &client_addrlen)) == -1) {
-            fprintf(stderr, "Server accept error: %s\n", strerror(errno));
+            fprintf(stderr, "error: Server accept error: %s\n", strerror(errno));
             return -1;
         }
 
-        // add parsing of the request, to bring appropriate html
+        char client_buffer[CLIENT_BUFFER_SIZE] = {0};
 
-        const char *filename = "index.html";
+        ssize_t value_read = read(client_fd, client_buffer, CLIENT_BUFFER_SIZE - 1);
+
+        if (value_read <= 0) {
+            fprintf(stderr, "error: Client disconnected or read error: %s\n",
+                    strerror(errno));
+            return -1;
+        }
+
+        if (value_read >= CLIENT_BUFFER_SIZE - 1) {
+            fprintf(stderr, "error: Client data exceeds buffer size. Truncating.\n");
+            client_buffer[CLIENT_BUFFER_SIZE - 1] = '\0';
+        }
+
+        HttpRequest *r;
+        init_http_request(&r);
+        parse_request_line(r, client_buffer);
+
+        char *host_header = strstr(client_buffer, "Host:");
+        char host[256] = {0};
+
+        if (host_header) {
+            sscanf(host_header + 5, "%255s", host);
+            char *port_separator = strchr(host, ':');
+            if (port_separator) {
+                *port_separator = '\0';
+            }
+
+            fprintf(stderr, "Request for host: %s\n", host);
+        }
+
+        char *key = malloc(strlen(r->uri) + 1);
+
+        strcpy(key, r->uri + 1);
+
+        const char *filename = getRoute(s->r, key);
 
         FILE *fptr = fopen(filename, "r");
 
         if (!fptr) {
             fprintf(stderr, "error: File does not exist %s\n", filename);
             close(client_fd);
-            return -1;
+            continue;
         }
 
         char *response = read_file(fptr);

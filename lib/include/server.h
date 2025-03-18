@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "routes.h"
+
 enum RequestType
 {
     GET,
@@ -11,7 +13,7 @@ enum RequestType
 
 typedef struct Server Server;
 
-Server *createServer(const char *port, const size_t max_pending_connections);
+Server *createServer(const char *port, const size_t max_pending_connections, Routes *r);
 void freeServer(Server *s);
 
 int32_t startServer(Server *s);
