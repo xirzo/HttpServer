@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.31.4)
 
 project(
-  httpserver
-  DESCRIPTION "HTTP/0.9 Server"
+  webserver
+  DESCRIPTION "Webserver"
   LANGUAGES C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
