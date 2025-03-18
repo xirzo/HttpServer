@@ -1,18 +1,16 @@
 #include <stdlib.h>
 
-#include "server/server.h"
+#include "server.h"
+
+#define PORT "5000"
+#define MAX_PENDING_CONNECTIONS 10
 
 int main(int argc, char *argv[]) {
-    const char PORT[] = "5000";
-    const int32_t MAX_PENDING_CONS = 10;
+    Server *s = createServer();
 
-    struct Server *server = malloc(sizeof(struct Server));
+    startServer(s, PORT, MAX_PENDING_CONNECTIONS);
 
-    init_server(server);
-
-    start_server(server, PORT, MAX_PENDING_CONS);
-
-    close_server(server);
+    closeServer(s);
 
     return EXIT_SUCCESS;
 }

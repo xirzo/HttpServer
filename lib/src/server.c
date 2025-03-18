@@ -12,9 +12,28 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-void init_server(struct Server *server) {
+typedef struct Server
+{
+    struct addrinfo *res;
+    int32_t fd;
+} Server;
+
+Server *createServer() {
+    Server *server = malloc(sizeof(*server));
+
     server->res = NULL;
     server->fd = 1;
+
+    return server;
+}
+
+void freeServer(Server *s) {
+    if (!s) {
+        fprintf(stderr, "error: Trying to free already freed server\n");
+        return;
+    }
+
+    free(s->res);
 }
 
 // rewrite this
@@ -45,8 +64,7 @@ char *read_file(FILE *f) {
     return buffer;
 }
 
-int32_t start_server(struct Server *server, const char *port,
-                     const int32_t max_pending_con) {
+int32_t startServer(Server *s, const char *port, const size_t max_pending_connections) {
     struct addrinfo hints;
 
     memset(&hints, 0, sizeof(hints));
@@ -57,30 +75,29 @@ int32_t start_server(struct Server *server, const char *port,
 
     int addrinfo_result;
 
-    if ((addrinfo_result = getaddrinfo(NULL, port, &hints, &server->res)) != 0) {
+    if ((addrinfo_result = getaddrinfo(NULL, port, &hints, &s->res)) != 0) {
         printf("Server getaddrinfo error: %s\n", strerror(errno));
         return -1;
     }
 
-    if ((server->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    if ((s->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         printf("Server socket error: %s\n", strerror(errno));
         return -1;
     }
 
     int32_t option = 1;
-    setsockopt(server->fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+    setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
 
     int32_t bind_result = 0;
 
-    if ((bind_result = bind(server->fd, server->res->ai_addr, server->res->ai_addrlen)) ==
-        -1) {
+    if ((bind_result = bind(s->fd, s->res->ai_addr, s->res->ai_addrlen)) == -1) {
         printf("Server bind error: %s\n", strerror(errno));
         return -1;
     }
 
     int32_t listen_result = 0;
 
-    if ((listen_result = listen(server->fd, max_pending_con)) == -1) {
+    if ((listen_result = listen(s->fd, max_pending_connections)) == -1) {
         printf("Server listen error: %s\n", strerror(errno));
         return -1;
     }
@@ -94,8 +111,8 @@ int32_t start_server(struct Server *server, const char *port,
         socklen_t client_addrlen = sizeof(client_addr);
         int client_fd;
 
-        if ((client_fd = accept(server->fd, (struct sockaddr *)&client_addr,
-                                &client_addrlen)) == -1) {
+        if ((client_fd =
+                 accept(s->fd, (struct sockaddr *)&client_addr, &client_addrlen)) == -1) {
             printf("Server accept error: %s\n", strerror(errno));
             return -1;
         }
@@ -117,14 +134,14 @@ int32_t start_server(struct Server *server, const char *port,
     return 0;
 }
 
-void close_server(struct Server *server) {
-    if (server->fd != -1) {
-        close(server->fd);
-        server->fd = -1;
+void closeServer(Server *s) {
+    if (s->fd != -1) {
+        close(s->fd);
+        s->fd = -1;
     }
 
-    if (server->res != NULL) {
-        freeaddrinfo(server->res);
-        server->res = NULL;
+    if (s->res != NULL) {
+        freeaddrinfo(s->res);
+        s->res = NULL;
     }
 }
