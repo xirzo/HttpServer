@@ -123,12 +123,26 @@ int32_t startServer(Server *s) {
 
         // add parsing of the request, to bring appropriate html
 
-        FILE *fptr = fopen("index.html", "r");
+        const char *filename = "index.html";
+
+        FILE *fptr = fopen(filename, "r");
+
+        if (!fptr) {
+            fprintf(stderr, "error: File does not exist %s\n", filename);
+            close(client_fd);
+            return -1;
+        }
 
         char *response = read_file(fptr);
 
-        fclose(fptr);
+        if (response == NULL || strlen(response) == 0) {
+            fprintf(stderr, "error: No response read from file\n");
+            close(client_fd);
+            fclose(fptr);
+            return -1;
+        }
 
+        fclose(fptr);
         send(client_fd, response, strlen(response), 0);
 
         printf("Client connected.\n");
