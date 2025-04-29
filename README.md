@@ -1,7 +1,6 @@
 # 🌐 WebServer
 
-[!WARNING]
-> **⚠️ Disclaimer**  
+> [!WARNING]  
 > This project was created for educational purposes and demonstration only.
 > The code is not production-grade and may have significant limitations, bugs, or security issues.  
 > **Do not use this :)**
