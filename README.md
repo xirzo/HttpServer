@@ -1,60 +1,67 @@
-# HTTP/0.9 Server in C
+# 🌐 WebServer
 
-A minimal implementation of an HTTP/0.9 server written in C. This server handles basic `GET` requests and serves raw HTML files. It is designed for educational purposes to demonstrate the simplicity of the HTTP/0.9 protocol.
-
----
-
-## Features
-
-- Supports HTTP/0.9 protocol.
-- Handles `GET` requests for static HTML files.
-- Serves files from the server's directory.
-- Closes the connection after sending the response (non-persistent connections).
+[!WARNING]
+> **⚠️ Disclaimer**  
+> This project was created for educational purposes and demonstration only.
+> The code is not production-grade and may have significant limitations, bugs, or security issues.  
+> **Do not use this :)**
 
 ---
 
-## Running the Server
+## 😅 What is This?
 
-1. Start the server:
+**WebServer** is a simple HTTP server written in C.  
+It serves static files, maps URL routes to files, and tries to handle basic HTTP requests. It is intentionally minimal and imperfect, meant to help me learn about:
 
-   ```bash
-   ./http_server
-   ```
-
-   By default, the server listens on `127.0.0.1` (localhost) and port `8080`.
-
-2. To specify a custom port, pass it as an argument:
-
-   ```bash
-   ./http_server 9000
-   ```
-
-   This will start the server on port `9000`.
+- Berkeley sockets
+- HTTP basics
+- Routing and serving static files
+- Handling content types
 
 ---
 
-## Testing the Server
+## 🏗️ How it Works
 
-1. Create a sample HTML file in the server's directory:
+- Uses low-level POSIX sockets to accept connections
+- Parses HTTP requests with [HttpParser](https://github.com/xirzo/HttpParser)
+- Maps URL paths to files using a simple `Routes` structure
+- Sends responses (with basic content-type detection) back to clients
 
-   ```bash
-   echo "<html><body><h1>Hello, HTTP/0.9!</h1></body></html>" > index.html
-   ```
+---
 
-2. Use `curl` or a web browser to make a request:
+## 📦 Directory Structure
 
-   ```bash
-   curl http://127.0.0.1:8080/index.html
-   ```
+- `assets/` - Static files served to clients (HTML, CSS, etc.)
+- `src/` - C source files (server logic, routing, etc.)
 
-   Output:
+---
 
-   ```html
-   <html>
-     <body>
-       <h1>Hello, HTTP/0.9!</h1>
-     </body>
-   </html>
-   ```
+## 🚀 Getting Started
 
-3. If the file does not exist, the server will close the connection without sending a response.
+### 1. Clone the repo
+
+```sh
+git clone https://github.com/xirzo/WebServer.git
+cd WebServer
+```
+
+### 2. Build (requires CMake)
+
+```sh
+mkdir build
+cd build
+cmake ..
+make
+```
+
+### 3. Run
+
+```sh
+./webserver
+```
+
+### 4. Open in your browser
+
+```
+http://localhost:5000 (uses port 5000 by default)
+```
