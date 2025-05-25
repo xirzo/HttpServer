@@ -15,21 +15,9 @@
 
 #include "routes.h"
 
-typedef struct Server
-{
-    int32_t fd;
-    size_t max_pending_connections;
-    size_t max_request_size;
-    const char *port;
-    struct addrinfo *res;
-    uint8_t running;
-    Routes *r;
-} Server;
-
-typedef struct
-{
-    const char *extension;
-    const char *content_type;
+typedef struct {
+  const char *extension;
+  const char *content_type;
 } ContentTypeMapping;
 
 ContentTypeMapping content_type_table[] = {
@@ -73,7 +61,6 @@ ContentTypeMapping content_type_table[] = {
     {"event-stream", "text/event-stream"},
     {"html", "text/html"},
     {"htm", "text/html"},
-    {"js", "text/javascript"},
     {"txt", "text/plain"},
     {"xml", "text/xml"},
 
@@ -91,226 +78,406 @@ ContentTypeMapping content_type_table[] = {
     {"odp", "application/vnd.oasis.opendocument.presentation"},
     {"odg", "application/vnd.oasis.opendocument.graphics"},
     {"xls", "application/vnd.ms-excel"},
-    {"xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    {"xlsx",
+     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
     {"ppt", "application/vnd.ms-powerpoint"},
-    {"pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+    {"pptx",
+     "application/"
+     "vnd.openxmlformats-officedocument.presentationml.presentation"},
     {"doc", "application/msword"},
-    {"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    {"docx",
+     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
     {"xul", "application/vnd.mozilla.xul+xml"},
 
     {NULL, "text/plain"}};
 
 const char *getContentType(const char *extension) {
-    size_t i = 0;
+  size_t i = 0;
 
-    while (content_type_table[i].extension != NULL) {
-        if (strcmp(extension, content_type_table[i].extension) == 0) {
-            return content_type_table[i].content_type;
-        }
-
-        i++;
+  while (content_type_table[i].extension != NULL) {
+    if (strcmp(extension, content_type_table[i].extension) == 0) {
+      return content_type_table[i].content_type;
     }
 
-    return content_type_table[i].content_type;
+    i++;
+  }
+
+  return content_type_table[i].content_type;
 }
 
 Server *createServer(const char *port, const size_t max_pending_connections,
                      const size_t max_request_size, Routes *r) {
-    Server *server = malloc(sizeof(*server));
+  Server *server = malloc(sizeof(*server));
 
-    server->fd = 1;
-    server->max_pending_connections = max_pending_connections;
-    server->max_request_size = max_request_size;
-    server->port = port;
-    server->res = NULL;
-    server->r = r;
-    server->running = 0;
+  if (!server) {
+    fprintf(stderr, "error: Failed to allocate memory for server\n");
+    return NULL;
+  }
 
-    return server;
+  server->fd = -1;
+  server->max_pending_connections = max_pending_connections;
+  server->max_request_size = max_request_size;
+  server->port = port;
+  server->res = NULL;
+  server->r = r;
+  server->running = 0;
+
+  return server;
 }
 
 void freeServer(Server *s) {
-    if (!s) {
-        fprintf(stderr, "error: Trying to free already freed server\n");
-        return;
-    }
+  if (!s) {
+    fprintf(stderr, "error: Trying to free already freed server\n");
+    return;
+  }
 
-    if (s->r) {
-        freeRoutes(s->r);
-    }
+  if (s->r) {
+    freeRoutes(s->r);
+  }
 
-    free(s->res);
+  if (s->res) {
+    freeaddrinfo(s->res);
+    s->res = NULL;
+  }
+
+  if (s->fd != -1) {
+    close(s->fd);
+    s->fd = -1;
+  }
+
+  free(s);
 }
 
 char *read_file(FILE *f) {
-    if (f == NULL || fseek(f, 0, SEEK_END)) {
-        return NULL;
-    }
+  if (f == NULL || fseek(f, 0, SEEK_END)) {
+    return NULL;
+  }
 
-    long length = ftell(f);
+  if (fseek(f, 0, SEEK_END) != 0) {
+    return NULL;
+  }
 
-    rewind(f);
+  long length = ftell(f);
 
-    if (length == -1 || (unsigned long)length >= SIZE_MAX) {
-        return NULL;
-    }
+  rewind(f);
 
-    size_t ulength = (size_t)length;
+  if (length < 0 || (unsigned long)length >= SIZE_MAX - 1) {
+    return NULL;
+  }
 
-    char *buffer = malloc(ulength + 1);
+  size_t ulength = (size_t)length;
 
-    if (buffer == NULL || fread(buffer, 1, ulength, f) != ulength) {
-        free(buffer);
-        return NULL;
-    }
+  char *buffer = malloc(ulength + 1);
 
-    buffer[ulength] = '\0';
+  if (buffer == NULL) {
+    return NULL;
+  }
 
-    return buffer;
+  size_t bytes_read = fread(buffer, 1, ulength, f);
+
+  if (bytes_read != ulength) {
+    free(buffer);
+    return NULL;
+  }
+
+  buffer[ulength] = '\0';
+
+  return buffer;
 }
 
 int32_t startServer(Server *s) {
-    struct addrinfo hints;
+  struct addrinfo hints;
 
-    memset(&hints, 0, sizeof(hints));
+  memset(&hints, 0, sizeof(hints));
 
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
 
-    int addrinfo_result;
+  int addrinfo_result;
 
-    if ((addrinfo_result = getaddrinfo(NULL, s->port, &hints, &s->res)) != 0) {
-        fprintf(stderr, "error: Server getaddrinfo error: %s\n", strerror(errno));
-        return -1;
-    }
+  if ((addrinfo_result = getaddrinfo(NULL, s->port, &hints, &s->res)) != 0) {
+    fprintf(stderr, "error: Server getaddrinfo error: %s\n",
+            gai_strerror(addrinfo_result));
+    return -1;
+  }
 
-    if ((s->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        fprintf(stderr, "error: Server socket error: %s\n", strerror(errno));
-        return -1;
-    }
+  if ((s->fd = socket(s->res->ai_family, s->res->ai_socktype,
+                      s->res->ai_protocol)) == -1) {
+    fprintf(stderr, "error: Server socket error: %s\n", strerror(errno));
+    freeaddrinfo(s->res);
+    return -1;
+  }
 
-    int32_t option = 1;
-    setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+  int32_t option = 1;
+  if (setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) ==
+      -1) {
+    fprintf(stderr, "error: Server setsockopt error: %s\n", strerror(errno));
+    close(s->fd);
+    freeaddrinfo(s->res);
+    return -1;
+  }
 
-    int32_t bind_result = 0;
+  if (bind(s->fd, s->res->ai_addr, s->res->ai_addrlen) == -1) {
+    fprintf(stderr, "error: Server bind error: %s\n", strerror(errno));
+    close(s->fd);
+    freeaddrinfo(s->res);
+    return -1;
+  }
 
-    if ((bind_result = bind(s->fd, s->res->ai_addr, s->res->ai_addrlen)) == -1) {
-        fprintf(stderr, "error: Server bind error: %s\n", strerror(errno));
-        return -1;
-    }
+  if (listen(s->fd, s->max_pending_connections) == -1) {
+    fprintf(stderr, "Server listen error: %s\n", strerror(errno));
+    close(s->fd);
+    freeaddrinfo(s->res);
+    return -1;
+  }
 
-    int32_t listen_result = 0;
-
-    if ((listen_result = listen(s->fd, s->max_pending_connections)) == -1) {
-        fprintf(stderr, "Server listen error: %s\n", strerror(errno));
-        return -1;
-    }
-
-    printf("Server listening on port: %s\n", s->port);
-    s->running = 1;
-    return 0;
+  printf("Server listening on port: %s\n", s->port);
+  s->running = 1;
+  return 0;
 }
 
 int32_t acceptClientConnection(Server *s) {
-    size_t current_client = -1;
+  while (s->running) {  // ✅ Added: Check if server is still running
+    struct sockaddr_storage client_addr;
+    socklen_t client_addrlen = sizeof(client_addr);
+    int client_fd;
 
-    while (1) {
-        struct sockaddr_storage client_addr;
-        socklen_t client_addrlen = sizeof(client_addr);
-        int client_fd;
-
-        if ((client_fd =
-                 accept(s->fd, (struct sockaddr *)&client_addr, &client_addrlen)) == -1) {
-            fprintf(stderr, "error: Server accept error: %s\n", strerror(errno));
-            return -1;
-        }
-
-        char *client_buffer = malloc(sizeof(char) * s->max_request_size);
-
-        ssize_t value_read = read(client_fd, client_buffer, s->max_request_size - 1);
-
-        if (value_read <= 0) {
-            fprintf(stderr, "error: Client disconnected or read error: %s\n",
-                    strerror(errno));
-            free(client_buffer);
-            return -1;
-        }
-
-        if (value_read >= s->max_request_size - 1) {
-            fprintf(stderr, "error: Client data exceeds buffer size. Truncating.\n");
-            client_buffer[s->max_pending_connections - 1] = '\0';
-        }
-
-        HttpRequest *r;
-        init_http_request(&r);
-        parse_request_line(r, client_buffer);
-
-        char *host_header = strstr(client_buffer, "Host:");
-        char host[256] = {0};
-
-        if (host_header) {
-            sscanf(host_header + 5, "%255s", host);
-            char *port_separator = strchr(host, ':');
-            if (port_separator) {
-                *port_separator = '\0';
-            }
-
-            fprintf(stderr, "Request for host: %s\n", host);
-        }
-
-        char *key = malloc(strlen(r->uri) + 1);
-
-        strcpy(key, r->uri + 1);
-
-        const char *filename = getRoute(s->r, key);
-
-        FILE *fptr = fopen(filename, "r");
-
-        if (!fptr) {
-            fprintf(stderr, "error: File does not exist %s\n", filename);
-            close(client_fd);
-            return 0;
-        }
-
-        char *response = read_file(fptr);
-
-        if (response == NULL || strlen(response) == 0) {
-            fprintf(stderr, "error: No response read from file\n");
-            close(client_fd);
-            fclose(fptr);
-            free(client_buffer);
-            return -1;
-        }
-
-        fclose(fptr);
-        send(client_fd, response, strlen(response), 0);
-
-        printf("Client connected.\n");
-
-        free(response);
-        free(key);
-        free(client_buffer);
-        close(client_fd);
-
-        close(client_fd);
+    if ((client_fd = accept(s->fd, (struct sockaddr *)&client_addr,
+                            &client_addrlen)) == -1) {
+      fprintf(stderr, "error: Server accept error: %s\n", strerror(errno));
+      continue;
     }
-}
 
-uint8_t isServerRunning(Server *s) {
-    return s->running;
+    char *client_buffer = malloc(sizeof(char) * s->max_request_size);
+
+    if (!client_buffer) {
+      fprintf(stderr, "error: Failed to allocate client buffer\n");
+      close(client_fd);
+      continue;
+    }
+
+    ssize_t value_read =
+        read(client_fd, client_buffer, s->max_request_size - 1);
+
+    if (value_read <= 0) {
+      fprintf(stderr, "error: Client disconnected or read error: %s\n",
+              strerror(errno));
+      free(client_buffer);
+      close(client_fd);
+      continue;
+    }
+
+    if (value_read >= s->max_request_size - 1) {
+      fprintf(stderr, "error: Client data exceeds buffer size. Truncating.\n");
+      client_buffer[s->max_request_size - 1] = '\0';
+    } else {
+      client_buffer[value_read] = '\0';
+    }
+
+    HttpRequest *r = NULL;
+
+    initHttpRequest(&r);
+    parseRequestLine(r, client_buffer);
+
+    if (!r->uri || !isValidPath(r->uri + 1)) {
+      fprintf(stderr, "error: Invalid or unsafe URI path\n");
+      sendHttpResponse(client_fd, "400 Bad Request", "text/plain", 400);
+      cleanupHttpRequest(r);
+      free(client_buffer);
+      close(client_fd);
+      continue;
+    }
+
+    char *host_header = strstr(client_buffer, "Host:");
+    char host[256] = {0};
+
+    if (host_header) {
+      char *host_start = host_header + 5;
+      while (*host_start == ' ' || *host_start == '\t') {
+        host_start++;
+      }
+
+      int parsed = sscanf(host_start, "%255[^:\r\n ]", host);
+      if (parsed == 1) {
+        printf("Request for host: %s\n", host);
+      }
+    }
+
+    char *key = malloc(strlen(r->uri));
+
+    if (!key) {
+      fprintf(stderr, "error: Failed to allocate memory for key\n");
+      sendHttpResponse(client_fd, "500 Internal Server Error", "text/plain",
+                       500);
+      cleanupHttpRequest(r);
+      free(client_buffer);
+      close(client_fd);
+      continue;
+    }
+
+    strcpy(key, r->uri + 1);
+
+    const char *filename = getRoute(s->r, key);
+
+    if (!filename) {
+      fprintf(stderr, "error: Route not found for key: %s\n", key);
+      sendHttpResponse(client_fd, "404 Not Found", "text/html", 404);
+      free(key);
+      cleanupHttpRequest(r);
+      free(client_buffer);
+      close(client_fd);
+      continue;
+    }
+
+    FILE *fptr = fopen(filename, "r");
+    if (!fptr) {
+      fprintf(stderr, "error: File does not exist %s\n", filename);
+      sendHttpResponse(client_fd, "404 Not Found", "text/html", 404);
+      free(key);
+      cleanupHttpRequest(r);
+      free(client_buffer);
+      close(client_fd);
+      continue;
+    }
+
+    char *response = read_file(fptr);
+    fclose(fptr);
+
+    if (response == NULL || strlen(response) == 0) {
+      fprintf(stderr, "error: No response read from file\n");
+      sendHttpResponse(client_fd, "500 Internal Server Error", "text/plain",
+                       500);
+      free(response);
+      free(key);
+      cleanupHttpRequest(r);
+      free(client_buffer);
+      close(client_fd);
+      continue;
+    }
+
+    const char *extension = getFileExtension(filename);
+    const char *content_type =
+        extension ? getContentType(extension) : "text/plain";
+
+    sendHttpResponse(client_fd, response, content_type, 200);
+
+    printf("Client request processed successfully.\n");
+
+    free(response);
+    free(key);
+    cleanupHttpRequest(r);
+    free(client_buffer);
+    close(client_fd);
+  }
+
+  return 0;
 }
 
 void closeServer(Server *s) {
-    s->running = 0;
+  s->running = 0;
 
-    if (s->fd != -1) {
-        close(s->fd);
-        s->fd = -1;
-    }
+  if (s->fd != -1) {
+    close(s->fd);
+    s->fd = -1;
+  }
 
-    if (s->res != NULL) {
-        freeaddrinfo(s->res);
-        s->res = NULL;
-    }
+  if (s->res != NULL) {
+    freeaddrinfo(s->res);
+    s->res = NULL;
+  }
+}
+
+int isValidPath(const char *path) {
+  if (!path) {
+    return 0;
+  }
+
+  if (strstr(path, "..") != NULL) {
+    return 0;
+  }
+
+  if (path[0] == '/') {
+    return 0;
+  }
+
+  return 1;
+}
+
+const char *getFileExtension(const char *filename) {
+  if (!filename) {
+    return NULL;
+  }
+
+  const char *dot = strrchr(filename, '.');
+
+  if (!dot || dot == filename) {
+    return NULL;
+  }
+
+  return dot + 1;
+}
+
+void sendHttpResponse(int client_fd, const char *content,
+                      const char *content_type, int status_code) {
+  if (!content || !content_type) {
+    return;
+  }
+
+  char *response_header;
+  const char *status_text;
+
+  switch (status_code) {
+    case 200:
+      status_text = "OK";
+      break;
+    case 404:
+      status_text = "Not Found";
+      break;
+    case 400:
+      status_text = "Bad Request";
+      break;
+    case 500:
+      status_text = "Internal Server Error";
+      break;
+    default:
+      status_text = "Unknown";
+      break;
+  }
+
+  size_t content_length = strlen(content);
+  size_t header_size =
+      snprintf(NULL, 0,
+               "HTTP/1.1 %d %s\r\n"
+               "Content-Type: %s\r\n"
+               "Content-Length: %zu\r\n"
+               "Connection: close\r\n"
+               "\r\n",
+               status_code, status_text, content_type, content_length) +
+      1;
+
+  response_header = malloc(header_size);
+
+  if (!response_header) {
+    return;
+  }
+
+  snprintf(response_header, header_size,
+           "HTTP/1.1 %d %s\r\n"
+           "Content-Type: %s\r\n"
+           "Content-Length: %zu\r\n"
+           "Connection: close\r\n"
+           "\r\n",
+           status_code, status_text, content_type, content_length);
+
+  send(client_fd, response_header, strlen(response_header), 0);
+  send(client_fd, content, content_length, 0);
+
+  free(response_header);
+}
+
+void cleanupHttpRequest(HttpRequest *r) {
+  if (r) {
+    freeHttpRequest(r);
+  }
 }

@@ -1,4 +1,4 @@
-# 🌐 WebServer
+# 🌐 HttpServer
 
 > [!WARNING]  
 > This project was created for educational purposes and demonstration only.
@@ -7,9 +7,9 @@
 
 ---
 
-## 😅 What is This?
+## 🤔 What is This?
 
-**WebServer** is a simple HTTP server written in C.  
+**HttpServer** is a simple HTTP server written in C.  
 It serves static files, maps URL routes to files, and tries to handle basic HTTP requests. It is intentionally minimal and imperfect, meant to help me learn about:
 
 - Berkeley sockets
@@ -40,8 +40,8 @@ It serves static files, maps URL routes to files, and tries to handle basic HTTP
 ### 1. Clone the repo
 
 ```sh
-git clone https://github.com/xirzo/WebServer.git
-cd WebServer
+git clone https://github.com/xirzo/HttpServer.git
+cd HttpServer
 ```
 
 ### 2. Build (requires CMake)
@@ -64,3 +64,49 @@ make
 ```
 http://localhost:5000 (uses port 5000 by default)
 ```
+
+---
+
+## 📚 Using This Library
+
+### Building and Installing
+
+To build and install the HttpServer library system-wide:
+
+```sh
+mkdir build
+cd build
+cmake ..
+make
+sudo make install
+```
+
+### Using with FetchContent
+
+You can include this library in your CMake project using FetchContent:
+
+```cmake
+include(FetchContent)
+
+FetchContent_Declare(
+  HttpServer
+  GIT_REPOSITORY https://github.com/xirzo/HttpServer.git
+  GIT_TAG        main
+)
+
+FetchContent_MakeAvailable(HttpServer)
+
+# Link to your target
+target_link_libraries(your_target PRIVATE HttpServer::HttpServer)
+```
+
+### Using with find_package
+
+If you have installed the library globally, you can use it with find_package:
+
+```cmake
+find_package(HttpServer REQUIRED)
+target_link_libraries(your_target PRIVATE HttpServer::HttpServer)
+```
+
+> **Note**: The library requires [HttpParser](https://github.com/xirzo/HttpParser) as a dependency.
