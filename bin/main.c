@@ -12,6 +12,7 @@ int main(int argc, char *argv[]) {
   Routes *r = createRoutes(MAX_NUMBER_OF_ROUTES);
 
   insertRoute(r, "", "index.html");
+  insertRoute(r, "style.css", "style.css");
 
   Server *s = createServer(PORT, MAX_PENDING_CONNECTIONS, MAX_REQUEST_SIZE, r);
 

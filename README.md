@@ -77,8 +77,8 @@ To build and install the HttpServer library system-wide:
 mkdir build
 cd build
 cmake ..
-make
-sudo make install
+cmake --build .
+sudo cmake --install . --prefix /usr/local
 ```
 
 ### Using with FetchContent
