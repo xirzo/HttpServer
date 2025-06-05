@@ -1,3 +1,6 @@
+#define _POSIX_C_SOURCE 200112L
+#define _GNU_SOURCE
+
 #include "server.h"
 
 #include <errno.h>
